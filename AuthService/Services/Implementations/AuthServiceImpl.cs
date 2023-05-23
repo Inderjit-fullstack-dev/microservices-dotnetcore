@@ -4,6 +4,10 @@ using AuthService.Services.Interfaces;
 using AuthService.ViewModels;
 using AutoMapper;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace AuthService.Services.Implementations
 {
@@ -11,11 +15,13 @@ namespace AuthService.Services.Implementations
     {
         private readonly ApplicationDBContext _context;
         private readonly IMapper _mapper;
+        private readonly IConfiguration _configuration;
 
-        public AuthServiceImpl(ApplicationDBContext context, IMapper mapper)
+        public AuthServiceImpl(ApplicationDBContext context, IMapper mapper, IConfiguration configuration)
         {
             _context = context;
             _mapper = mapper;
+            _configuration = configuration;
         }
 
         public async Task<List<UserViewModel>> GetUsers()
@@ -90,16 +96,66 @@ namespace AuthService.Services.Implementations
             }
         }
 
+        public async Task<UserViewModel> Login(LoginViewModel request)
+        {
+            try
+            {
+                var user = await _context.Users
+                        .Include(x => x.UserRoles).ThenInclude(r => r.Role)
+                        .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+                if (user == null)
+                {
+                    throw new Exception("Account not found!");
+                }
+
+                bool isVerified = BCrypt.Net.BCrypt.Verify(request.Password, user.Password);
+
+                if (!isVerified)
+                {
+                    throw new Exception("You have entered wrong password.");
+                }
+
+                var mappedUser = _mapper.Map<UserViewModel>(user);
+                mappedUser.Token = GenerateToken(user);
+
+                return mappedUser;
+            }
+            catch (Exception)
+            {
+
+                throw;
+            }
+        }
+
+
+        private string GenerateToken(User user)
+        {
+            var issuer = _configuration["Jwt:Issuer"];
+            var audience = _configuration["Jwt:Audience"];
+            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"]);
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(new[]
+                {
+                    new Claim("Id", Guid.NewGuid().ToString()),
+                    new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                    new Claim(JwtRegisteredClaimNames.Email, user.Email),
+                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+             }),
+                Expires = DateTime.UtcNow.AddMinutes(60),
+                Issuer = issuer,
+                Audience = audience,
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha512Signature)
+            };
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            return tokenHandler.WriteToken(token);
+        }
+
         private async Task<bool> IsUserExists(string email)
         {
             return await _context.Users.AnyAsync(x => x.Email == email);
         }
-
-        public async Task<UserViewModel> Login(string username, string password)
-        {
-            throw new NotImplementedException();
-        }
-
-        
     }
 }

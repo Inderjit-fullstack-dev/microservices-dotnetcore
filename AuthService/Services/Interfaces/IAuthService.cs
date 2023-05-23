@@ -7,6 +7,6 @@ namespace AuthService.Services.Interfaces
     {
         Task<List<UserViewModel>> GetUsers();
         Task<bool> CreateUser(SignupViewModel request);
-        Task<UserViewModel> Login(string username, string password);
+        Task<UserViewModel> Login(LoginViewModel request);
     }
 }

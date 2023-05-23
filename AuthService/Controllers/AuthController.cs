@@ -42,5 +42,19 @@ namespace AuthService.Controllers
                 return BadRequest(ex.Message);
             }
         }
+
+        [HttpPost]
+        public async Task<IActionResult> Login(LoginViewModel request)
+        {
+            try
+            {
+                var result = await _authService.Login(request);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }
